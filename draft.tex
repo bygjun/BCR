@@ -8,7 +8,7 @@
 \setlist[itemize]{leftmargin=*}
 
 \title{Budgeted Causal Repair for Reliable Multi-Hop RAG\\\large (예산 제약 하 반사실적 국소 복구를 통한 멀티홉 RAG 신뢰성 향상)}
-\author{bygjun}
+\author{김병준}
 \date{\today}
 
 \begin{document}
@@ -51,18 +51,14 @@
 
 \section{방법: Budgeted Causal Repair (BCR)}
 \subsection{문제 정식화}
-\begin{align}
-\max_{\pi}\; &\mathbb{E}[U(y)] \\
-\text{s.t.}\; &\mathbb{E}[C(\pi)] \le B
-\end{align}
-
-\begin{align}
-U(y)=\alpha_1\cdot \text{AnsScore}(y)+\alpha_2\cdot \text{EvidenceCoverage}(y)-\alpha_3\cdot \text{Omission}(y)-\alpha_4\cdot \text{LinkInconsistency}(y)
-\end{align}
-
-\begin{align}
-C(\pi)=c_{\text{tok}}N_{\text{tok}}+c_{\text{ret}}N_{\text{ret}}+c_{\text{rep}}N_{\text{rep}}+c_{\text{lat}}T_{\text{lat}}
-\end{align}
+\begin{equation*}
+\begin{gathered}
+\max_{\pi}\; \mathbb{E}[U(y)] \quad \text{s.t.}\quad \mathbb{E}[C(\pi)] \le B \\
+U(y)=\alpha_1\cdot \text{AnsScore}(y)+\alpha_2\cdot \text{EvidenceCoverage}(y)-\alpha_3\cdot \text{Omission}(y)-\alpha_4\cdot \text{LinkInconsistency}(y) \\
+C(\pi)=c_{\text{tok}}N_{\text{tok}}+c_{\text{ret}}N_{\text{ret}} \\
+\hspace{2.2em}+c_{\text{rep}}N_{\text{rep}}+c_{\text{lat}}T_{\text{lat}}
+\end{gathered}
+\end{equation*}
 
 \begin{itemize}
   \item AnsScore는 추론 시 verifier proxy, 평가 시 EM/F1로 대체.
