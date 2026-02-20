@@ -232,22 +232,6 @@ R_t>\eta,\quad C_{\text{used}}+\Delta C_t\le B
   \item 재현성 저하 $\rightarrow$ config/seed 고정, 로그 표준화, 실행 스크립트 공개
 \end{enumerate}
 
-\section{12주 실행 로드맵}
-\begin{enumerate}
-  \item 1주차: 수식/지표/프로토콜 고정, 코드 스켈레톤
-  \item 2주차: baseline 재현, 공정성 체크리스트 확정
-  \item 3주차: hop 파서·게이트 구현
-  \item 4주차: 개입 엔진·LCIS 추정기 구현
-  \item 5주차: 순차검정·조기종료 구현
-  \item 6주차: budget allocator·repair executor 통합
-  \item 7주차: HotpotQA(B0\textasciitilde{}B3) 실험
-  \item 8주차: 2Wiki(B0\textasciitilde{}B3) 실험
-  \item 9주차: MuSiQue + MultiHop-RAG 실험
-  \item 10주차: 아블레이션/오류유형 분석
-  \item 11주차: 통계검정·표·그림 정리
-  \item 12주차: 논문 작성/내부 리뷰/최종 수정
-\end{enumerate}
-
 \section{선행/관련 연구 정리 (템플릿, 상세판)}
 \subsection*{1) Adaptive-RAG (NAACL 2024)}
 \begin{enumerate}
@@ -416,15 +400,5 @@ R_t>\eta,\quad C_{\text{used}}+\Delta C_t\le B
   \item 강점/한계: 예산 최적화 근거 / 오류 위치화 없음.
   \item 우리와 비교: A X, B X, C X, D O.
 \end{enumerate}
-
-\section{논문에서 강조할 최종 차별화 문장}
-\begin{enumerate}
-  \item BCR은 오류를 찾고 고치는 데서 그치지 않고, \textbf{검증 호출 자체를 최적화 변수}로 둔다.
-  \item BCR은 \textbf{LCIS를 정책 중심 신호}로 사용해 hop별 복구 범위를 정량 제어한다.
-  \item BCR은 \textbf{정확도-근거품질-비용}을 동시에 보고하는 재현 가능한 실험 프로토콜을 제공한다.
-\end{enumerate}
-
-\section{결론}
-BCR은 많이 재시도하는 시스템이 아니라 필요한 hop만 검증·복구하는 시스템을 지향한다. 정확도, 근거 신뢰성, 비용 효율을 동시에 최적화하는 멀티홉 RAG 운용 방법으로서 실제 배포 환경에 적합한 연구 방향을 제시한다.
 
 \end{document}
