@@ -1,0 +1,434 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{kotex}
+\setlist[enumerate]{leftmargin=*,itemsep=0.3em,topsep=0.4em}
+\setlist[itemize]{leftmargin=*}
+
+\title{Budgeted Causal Repair for Reliable Multi-Hop RAG\\\large (예산 제약 하 반사실적 국소 복구를 통한 멀티홉 RAG 신뢰성 향상)}
+\author{bygjun}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section*{한 줄 요약}
+멀티홉 RAG에서 모든 단계를 무겁게 검증하지 않고, 오류 가능성이 높은 hop만 반사실적으로 검사하여 부분 복구하고, 이를 예산 제약 최적화 문제로 푸는 연구.
+
+\begin{abstract}
+멀티홉 RAG는 복합 질의에서 높은 잠재력을 보이지만, 초기 hop의 근거 누락과 관계 단절이 후속 hop으로 전파되어 최종 정답과 근거 신뢰성을 동시에 저하시킨다. 기존 연구는 검색 강화, 오류 위치화, 부분 재생성, 리스크 추정 중 일부 축에 집중하며, 어떤 hop에 몇 번의 반사실적 검증을 배분할지 예산 제약 하에서 최적화하는 문제를 직접 다루지 않는다. 본 연구는 Budgeted Causal Repair (BCR)를 제안한다. BCR은 (i) 저비용 게이팅으로 의심 hop 후보를 추출하고, (ii) 후보 hop에만 링크 단위 개입을 수행해 LCIS(Link Causal Influence Score)를 추정하며, (iii) 순차검정 기반 조기종료와 hop별 예산 할당으로 복구 범위를 동적으로 결정한다. 복구는 재검색, 링크 재연결, 부분 재생성으로 구성된다. HotpotQA, 2WikiMultiHopQA, MuSiQue, MultiHop-RAG에서 EM/F1, evidence coverage, omission rate, link-consistency, error localization F1, cost-per-gain을 평가한다. 본 연구는 동일 또는 유사 예산 하에서 정확도와 근거 체인 신뢰성을 동시에 개선하는 멀티홉 RAG 운용 방법론을 제시한다.
+\end{abstract}
+
+\section{연구 메타}
+\textbf{문제 한 줄 정의:} 멀티홉 RAG에서 오류는 hop 간 연결을 따라 전파되며, 이를 전수 검증하면 비용이 과도하고 무검증 복구는 신뢰성이 낮다.
+
+\textbf{핵심 가설}
+\begin{enumerate}
+  \item 오류 가능 hop만 선별해 반사실적 개입을 수행하면 동일 예산에서 더 높은 정확도와 신뢰성을 달성할 수 있다.
+  \item LCIS 기반 복구 우선순위가 heuristic 기반 복구보다 cost-per-gain이 우수하다.
+  \item 순차검정 조기종료가 성능 저하 없이 counterfactual 호출비를 줄인다.
+\end{enumerate}
+
+\section{연구 배경과 공백}
+\begin{enumerate}
+  \item 멀티홉 QA는 단계별 근거 연결 실패가 성능 하락의 핵심 원인이다.
+  \item 기존 멀티홉 RAG 계열은 검색 경로 품질을 높이지만, 실패 단계의 인과적 기여도를 정책적으로 활용하는 경우가 드물다.
+  \item 오류 위치화 계열은 실패 지점 탐지에 강하지만, 검증 호출비를 최적화 대상으로 다루지 않는 경우가 많다.
+  \item 본 연구의 공백은 \textbf{오류 위치화 + 인과 점수 + 예산 최적화}를 단일 복구 정책으로 결합하는 데 있다.
+\end{enumerate}
+
+\section{연구 목표와 질문}
+\textbf{목표:} 예산 제약 하에서 정확도(EM/F1), 근거 체인 품질, 비용 효율을 동시에 개선하는 복구 정책 확립.
+
+\textbf{연구질문}
+\begin{enumerate}
+  \item LCIS는 복구 우선순위의 유효한 결정 신호인가?
+  \item 순차검정 조기종료는 비용을 줄이면서 성능을 유지하는가?
+  \item 동일 budget tier에서 BCR은 기존 방법 대비 Pareto 우위를 보이는가?
+\end{enumerate}
+
+\section{방법: Budgeted Causal Repair (BCR)}
+\subsection{문제 정식화}
+\begin{align}
+\max_{\pi}\; &\mathbb{E}[U(y)] \\
+\text{s.t.}\; &\mathbb{E}[C(\pi)] \le B
+\end{align}
+
+\begin{align}
+U(y)=\alpha_1\cdot \text{AnsScore}(y)+\alpha_2\cdot \text{EvidenceCoverage}(y)-\alpha_3\cdot \text{Omission}(y)-\alpha_4\cdot \text{LinkInconsistency}(y)
+\end{align}
+
+\begin{align}
+C(\pi)=c_{\text{tok}}N_{\text{tok}}+c_{\text{ret}}N_{\text{ret}}+c_{\text{rep}}N_{\text{rep}}+c_{\text{lat}}T_{\text{lat}}
+\end{align}
+
+\begin{itemize}
+  \item AnsScore는 추론 시 verifier proxy, 평가 시 EM/F1로 대체.
+  \item $B$는 질의당 허용 비용(토큰/호출/지연) 예산.
+\end{itemize}
+
+\subsection{단계 1: 저비용 게이트}
+모든 hop를 검증하지 않고 후보 $K$만 추출한다.
+\begin{enumerate}
+  \item 인용 문장 수 부족 또는 동일 인용 반복
+  \item hop $t$의 핵심 엔티티가 hop $t+1$에서 연결되지 않음
+  \item self-consistency 저하
+  \item verifier-lite 점수 하위 분위수
+\end{enumerate}
+\begin{align}
+K=\{h_t \mid g(h_t)\ge \tau_g\}
+\end{align}
+
+\subsection{단계 2: 링크 단위 반사실적 개입과 LCIS}
+\textbf{개입 타입}
+\begin{enumerate}
+  \item Bridge intervention: bridge entity/관계 제거 또는 치환
+  \item Relation-only intervention: 엔티티 고정, 관계 표현만 치환
+  \item Citation swap: claim 유지, citation만 교체
+\end{enumerate}
+
+\begin{align}
+\widehat{LCIS}_t=\frac{1}{n_t}\sum_{i=1}^{n_t}\left(S(y)-S\left(y^{(i,t)}\right)\right)
+\end{align}
+
+\subsection{단계 3: 순차검정과 조기종료}
+각 후보 hop에 대해 최소 샘플 $n_{\min}$부터 시작한다.
+\begin{enumerate}
+  \item $CI_{\text{lower}}(LCIS_t)>\tau_{\text{high}}$: 중요한 hop로 확정, 복구 후보 유지, 테스트 중단
+  \item $CI_{\text{upper}}(LCIS_t)<\tau_{\text{low}}$: 비중요 hop로 확정, 후보 제외, 테스트 중단
+  \item 그 외: $n_t<n_{\max}$이고 예산이 남으면 추가 테스트
+\end{enumerate}
+
+\subsection{단계 4: 예산 기반 복구 우선순위}
+\begin{align}
+R_t=\beta_1\cdot Risk_t+\beta_2\cdot (1-\widehat{LCIS}_t)-\beta_3\cdot \widehat{Cost}_t+\beta_4\cdot UncertaintyBonus_t
+\end{align}
+
+복구 실행 조건:
+\begin{align}
+R_t>\eta,\quad C_{\text{used}}+\Delta C_t\le B
+\end{align}
+
+복구 연산:
+\begin{enumerate}
+  \item 재검색 (retrieve again with focused query)
+  \item 링크 재연결 (re-link entities/relations)
+  \item 부분 재생성 (local regenerate from failing hop)
+  \item 전체 재시도(full rerun)는 최후 수단
+\end{enumerate}
+
+\subsection{알고리즘 요약}
+\begin{enumerate}
+  \item Hop 분해 및 게이팅으로 후보 추출
+  \item 후보별 LCIS 순차추정
+  \item 우선순위 점수 $R_t$ 계산
+  \item 예산 내 복구 반복
+  \item 예산 소진 또는 추가 이득 미미 시 종료
+\end{enumerate}
+
+\section{구현 상세 계획}
+\subsection{시스템 모듈}
+\begin{enumerate}
+  \item HopParser: hop 분해 및 링크 추출
+  \item GateScorer: 저비용 위험 점수 계산
+  \item InterventionEngine: 3종 개입 생성
+  \item LCISEstimator: 순차추정 및 신뢰구간 업데이트
+  \item BudgetAllocator: 잔여 예산 기반 우선순위 실행
+  \item RepairExecutor: 재검색/재연결/부분재생성 수행
+  \item Evaluator: 정답/근거/비용 지표 계산
+\end{enumerate}
+
+\subsection{권장 하이퍼파라미터 시작점}
+\begin{enumerate}
+  \item $\tau_g$: 상위 30\% 위험 hop 통과
+  \item $n_{\min}=2,\; n_{\max}=6$
+  \item $\tau_{\text{low}}=0.02,\; \tau_{\text{high}}=0.10$
+  \item budget tier: B0/B1/B2/B3 = 0/+10\%/+20\%/+30\%
+\end{enumerate}
+
+\subsection{계산복잡도}
+질의당 추가 호출량은 대략 $O(|K|\cdot \bar n)$이며, 게이팅이 유효하면 $|K| \ll T$가 되어 전체 비용을 억제할 수 있다.
+
+\section{실험 설계(재현 중심)}
+\subsection{데이터셋}
+\begin{enumerate}
+  \item HotpotQA
+  \item 2WikiMultiHopQA
+  \item MuSiQue
+  \item MultiHop-RAG benchmark
+\end{enumerate}
+
+\subsection{비교군}
+\begin{enumerate}
+  \item Vanilla RAG
+  \item Adaptive-RAG
+  \item HopRAG
+  \item PropRAG
+  \item HydraRAG
+  \item ERL (재현 가능 시)
+\end{enumerate}
+
+\subsection{공정성 통제}
+\begin{enumerate}
+  \item 동일 backbone LLM
+  \item 동일 retriever/index/top-k/context budget
+  \item 동일 decoding
+  \item seed 5회 반복
+  \item 동일 budget tier에서만 비교
+\end{enumerate}
+
+\subsection{평가 지표}
+\begin{enumerate}
+  \item 정답: EM, F1
+  \item 근거 품질: Evidence Coverage, Omission Rate, Link-Consistency
+  \item 위치화: Error Localization F1
+  \item 효율: 토큰, retrieval calls, latency, retry count
+  \item 종합: Cost-per-Gain, Pareto Frontier
+\end{enumerate}
+
+\subsection{통계}
+\begin{enumerate}
+  \item paired bootstrap 10{,}000회
+  \item 95\% CI 보고
+  \item 주요 비교쌍 유의성 검증
+\end{enumerate}
+
+\section{아블레이션 설계}
+\begin{enumerate}
+  \item Full BCR
+  \item No-Gate
+  \item No-LCIS (heuristic score만 사용)
+  \item No-Sequential-Test (고정 $n$)
+  \item No-Budget-Allocation (균등 배분)
+  \item Random-Hop-Repair
+  \item Full-Rerun-Repair
+\end{enumerate}
+
+추가 분석:
+\begin{enumerate}
+  \item hop 길이별(2/3/4+) 성능 변화
+  \item 오류 유형별(omission/drift/relational) 개선폭
+  \item 예산 민감도(B0~B3) 곡선
+\end{enumerate}
+
+\section{기대 결과와 성공 기준}
+\subsection{사전등록 성공 기준}
+\begin{enumerate}
+  \item B2(+20\%)에서 평균 EM +3p 이상
+  \item Error Localization F1 유의 개선
+  \item Full-Rerun 대비 Cost-per-Gain 우위
+  \item Pareto 상 BCR이 최소 2개 tier에서 비지배(non-dominated)
+\end{enumerate}
+
+\subsection{참고 기대치(시뮬레이션 기반)}
+\begin{enumerate}
+  \item 보수적: EM +2p 내외
+  \item 현실적: EM +4\textasciitilde{}6p, F1 +2\textasciitilde{}4p
+  \item 낙관적: EM +7p 이상
+\end{enumerate}
+
+\section{리스크 및 대응}
+\begin{enumerate}
+  \item 반사실적 검증비 과다 $\rightarrow$ gate 강화, 조기종료, $n_{\max}$ 제한
+  \item 개선폭 미미 $\rightarrow$ 정확도 단독이 아닌 Pareto/cost-per-gain 중심 기여 강화
+  \item 재현성 저하 $\rightarrow$ config/seed 고정, 로그 표준화, 실행 스크립트 공개
+\end{enumerate}
+
+\section{12주 실행 로드맵}
+\begin{enumerate}
+  \item 1주차: 수식/지표/프로토콜 고정, 코드 스켈레톤
+  \item 2주차: baseline 재현, 공정성 체크리스트 확정
+  \item 3주차: hop 파서·게이트 구현
+  \item 4주차: 개입 엔진·LCIS 추정기 구현
+  \item 5주차: 순차검정·조기종료 구현
+  \item 6주차: budget allocator·repair executor 통합
+  \item 7주차: HotpotQA(B0\textasciitilde{}B3) 실험
+  \item 8주차: 2Wiki(B0\textasciitilde{}B3) 실험
+  \item 9주차: MuSiQue + MultiHop-RAG 실험
+  \item 10주차: 아블레이션/오류유형 분석
+  \item 11주차: 통계검정·표·그림 정리
+  \item 12주차: 논문 작성/내부 리뷰/최종 수정
+\end{enumerate}
+
+\section{선행/관련 연구 정리 (템플릿, 상세판)}
+\subsection*{1) Adaptive-RAG (NAACL 2024)}
+\begin{enumerate}
+  \item 문제정의: 질의 복잡도별 최적 retrieval 전략이 상이.
+  \item 핵심 아이디어: 복잡도 분류 후 전략 동적 선택.
+  \item 출력/중간표현: 복잡도 라벨, 전략 경로.
+  \item 검증 단위/방식: 질의 단위 분기.
+  \item 복구/개입 정책: 전략 전환.
+  \item 학습 필요: 분류기 학습 필요.
+  \item 실험 세팅: open-domain QA 다중 난이도.
+  \item 평가 지표: 정확도+효율.
+  \item 강점/한계: 효율 우수 / 국소 오류 복구 부재.
+  \item 우리와 비교: A X, B X, C X, D O.
+\end{enumerate}
+
+\subsection*{2) HopRAG (ACL Findings 2025)}
+\begin{enumerate}
+  \item 문제정의: 유사도 중심 검색의 논리 연결 약함.
+  \item 핵심 아이디어: 그래프 기반 retrieve-reason-prune.
+  \item 출력/중간표현: passage graph.
+  \item 검증 단위/방식: 경로 추론/가지치기.
+  \item 복구/개입 정책: 경로 조정 중심.
+  \item 학습 필요: 낮음 (plug-and-play 성격).
+  \item 실험 세팅: multi-hop QA 벤치 다수.
+  \item 평가 지표: 정답 성능 중심.
+  \item 강점/한계: 검색 경로 강화 / causal-budget 정책 부재.
+  \item 우리와 비교: A △, B X, C △, D △.
+\end{enumerate}
+
+\subsection*{3) PropRAG (EMNLP 2025)}
+\begin{enumerate}
+  \item 문제정의: triple 구조의 context collapse.
+  \item 핵심 아이디어: proposition path + beam search.
+  \item 출력/중간표현: proposition 체인.
+  \item 검증 단위/방식: 경로 점수 기반.
+  \item 복구/개입 정책: 경로 탐색 개선.
+  \item 학습 필요: 낮음.
+  \item 실험 세팅: HotpotQA/2Wiki/MuSiQue.
+  \item 평가 지표: Recall@5/F1.
+  \item 강점/한계: 멀티홉 경로 강함 / 복구정책 제한.
+  \item 우리와 비교: A X, B X, C O, D △.
+\end{enumerate}
+
+\subsection*{4) HydraRAG (EMNLP 2025)}
+\begin{enumerate}
+  \item 문제정의: multi-source/multi-hop 신뢰성 검증 난이도.
+  \item 핵심 아이디어: graph+text+source reliability 통합.
+  \item 출력/중간표현: 교차근거 구조, path alignment.
+  \item 검증 단위/방식: corroboration + source trust.
+  \item 복구/개입 정책: 탐색 중 pruning.
+  \item 학습 필요: 없음(training-free).
+  \item 실험 세팅: 7개 벤치마크.
+  \item 평가 지표: 정확도/충실도.
+  \item 강점/한계: 교차검증 우수 / 예산 최적화 직접성 약함.
+  \item 우리와 비교: A △, B X, C O, D △.
+\end{enumerate}
+
+\subsection*{5) ERL (arXiv 2025)}
+\begin{enumerate}
+  \item 문제정의: 멀티홉 오류 전파.
+  \item 핵심 아이디어: faulty step 삭제 후 재생성.
+  \item 출력/중간표현: step 체인 + 오류 step.
+  \item 검증 단위/방식: step 오류 식별.
+  \item 복구/개입 정책: 부분 재생성.
+  \item 학습 필요: 있음 (RL).
+  \item 실험 세팅: HotpotQA/2Wiki/MuSiQue/Bamboogle.
+  \item 평가 지표: EM/F1.
+  \item 강점/한계: 복구 성능 강함 / 예산 제약 최적화 약함.
+  \item 우리와 비교: A O, B O, C △, D X.
+\end{enumerate}
+
+\subsection*{6) RC-RAG (EMNLP Findings 2024)}
+\begin{enumerate}
+  \item 문제정의: RAG 불확실성 제어 부족.
+  \item 핵심 아이디어: counterfactual prompting 기반 risk/abstain.
+  \item 출력/중간표현: confidence, abstain.
+  \item 검증 단위/방식: counterfactual 프롬프트 비교.
+  \item 복구/개입 정책: 거절 중심.
+  \item 학습 필요: 낮음 (프롬프팅).
+  \item 실험 세팅: risk-aware 프로토콜.
+  \item 평가 지표: risk-coverage.
+  \item 강점/한계: 안전성 우수 / 멀티홉 국소복구 직접성 낮음.
+  \item 우리와 비교: A X, B X, C X, D O.
+\end{enumerate}
+
+\subsection*{7) Tyen et al. (ACL Findings 2024)}
+\begin{enumerate}
+  \item 문제정의: 오류 탐지가 self-correction 병목.
+  \item 핵심 아이디어: 오류 위치를 알면 교정 성능이 상승함을 실증.
+  \item 출력/중간표현: reasoning trace + error location.
+  \item 검증 단위/방식: step-level mistake finding.
+  \item 복구/개입 정책: 위치 기반 backtracking 교정.
+  \item 학습 필요: 보조 분류기 제안.
+  \item 실험 세팅: 5개 추론 과제 + BIG-Bench Mistake.
+  \item 평가 지표: 탐지/수정률.
+  \item 강점/한계: 위치화 통찰 강함 / RAG 연계 약함.
+  \item 우리와 비교: A O, B △, C X, D X.
+\end{enumerate}
+
+\subsection*{8) DeltaBench (ACL 2025)}
+\begin{enumerate}
+  \item 문제정의: long-CoT 오류탐지 벤치 부족.
+  \item 핵심 아이디어: 장문 추론 오류 탐지 벤치 제시.
+  \item 출력/중간표현: 긴 reasoning + 오류 주석.
+  \item 검증 단위/방식: process critic/PRM 평가.
+  \item 복구/개입 정책: 평가 중심.
+  \item 학습 필요: 벤치 사용은 무학습.
+  \item 실험 세팅: 수학/코드/일반추론.
+  \item 평가 지표: 오류 탐지 성능.
+  \item 강점/한계: 평가 강함 / RAG 복구 직접성 약함.
+  \item 우리와 비교: A O, B X, C X, D X.
+\end{enumerate}
+
+\subsection*{9) ProcessBench (ACL 2025)}
+\begin{enumerate}
+  \item 문제정의: earliest failing step 식별 어려움.
+  \item 핵심 아이디어: earliest error 라벨 벤치 구축.
+  \item 출력/중간표현: step 풀이 + earliest error 라벨.
+  \item 검증 단위/방식: step localization.
+  \item 복구/개입 정책: 벤치 중심.
+  \item 학습 필요: 평가 관점 무학습.
+  \item 실험 세팅: 경쟁수학 3,400 케이스.
+  \item 평가 지표: 위치화 정확도.
+  \item 강점/한계: 표준평가 강함 / RAG 직접성 낮음.
+  \item 우리와 비교: A O, B O(평가 관점), C X, D X.
+\end{enumerate}
+
+\subsection*{10) Verifying Steps of Deductive Chains (ACL Findings 2025)}
+\begin{enumerate}
+  \item 문제정의: step soundness 자동 판별 어려움.
+  \item 핵심 아이디어: soundness 데이터 + neuro-symbolic verifier.
+  \item 출력/중간표현: step + sound/unsound 라벨.
+  \item 검증 단위/방식: step verifier 비교.
+  \item 복구/개입 정책: 검증 중심, 복구 직접성 낮음.
+  \item 학습 필요: verifier 학습 필요.
+  \item 실험 세팅: 연역 추론 체인.
+  \item 평가 지표: soundness 판별 성능.
+  \item 강점/한계: 검증 정밀 / 비용최적화 없음.
+  \item 우리와 비교: A O, B X, C X, D X.
+\end{enumerate}
+
+\subsection*{11) Thought-ICS (arXiv 2026)}
+\begin{enumerate}
+  \item 문제정의: 비구조 CoT 오류 위치화 한계.
+  \item 핵심 아이디어: thought 단위 분해 + first-error backtracking.
+  \item 출력/중간표현: discrete thought sequence.
+  \item 검증 단위/방식: thought-step 검증.
+  \item 복구/개입 정책: 정상 step까지 회귀 후 재생성.
+  \item 학습 필요: 낮음 (절차 중심).
+  \item 실험 세팅: correction 시나리오 (oracle/자율).
+  \item 평가 지표: self-correction 개선.
+  \item 강점/한계: earliest repair 강함 / RAG·비용최적화 미포함.
+  \item 우리와 비교: A O, B O, C X, D X.
+\end{enumerate}
+
+\subsection*{12) Scaling Test-Time Compute (arXiv 2024)}
+\begin{enumerate}
+  \item 문제정의: 테스트 시 계산 예산 배분 최적화.
+  \item 핵심 아이디어: 난이도별 compute allocation이 효율적.
+  \item 출력/중간표현: allocation policy.
+  \item 검증 단위/방식: 성능 대비 계산량 비교.
+  \item 복구/개입 정책: 복구보다 계산 제어 중심.
+  \item 학습 필요: 방법별 상이, 추론 정책 중심.
+  \item 실험 세팅: reasoning 과제군.
+  \item 평가 지표: 성능/FLOPs 효율.
+  \item 강점/한계: 예산 최적화 근거 / 오류 위치화 없음.
+  \item 우리와 비교: A X, B X, C X, D O.
+\end{enumerate}
+
+\section{논문에서 강조할 최종 차별화 문장}
+\begin{enumerate}
+  \item BCR은 오류를 찾고 고치는 데서 그치지 않고, \textbf{검증 호출 자체를 최적화 변수}로 둔다.
+  \item BCR은 \textbf{LCIS를 정책 중심 신호}로 사용해 hop별 복구 범위를 정량 제어한다.
+  \item BCR은 \textbf{정확도-근거품질-비용}을 동시에 보고하는 재현 가능한 실험 프로토콜을 제공한다.
+\end{enumerate}
+
+\section{결론}
+BCR은 많이 재시도하는 시스템이 아니라 필요한 hop만 검증·복구하는 시스템을 지향한다. 정확도, 근거 신뢰성, 비용 효율을 동시에 최적화하는 멀티홉 RAG 운용 방법으로서 실제 배포 환경에 적합한 연구 방향을 제시한다.
+
+\end{document}
