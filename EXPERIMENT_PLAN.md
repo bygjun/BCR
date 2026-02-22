@@ -16,6 +16,7 @@
 - 비교는 동일 dataset/method/budget tier/seed 단위로 수행한다.
 - 비용 동등성은 아래 조건으로 정의한다.
 - `0.95 <= C_method / C_ref <= 1.05`
+- `C_ref`는 비교쌍별 기준 모델로 고정한다. 예: `BCR-Full vs Vanilla`는 `C_ref=C_vanilla`, `BCR-Full vs Full-Rerun`은 `C_ref=C_full-rerun`.
 - 위 범위를 벗어난 쌍은 "비용 비동등"으로 태깅하고, **주가설 검정에서는 제외**한다.
 - 비용 비동등 결과는 별도 부록(민감도 분석)에서만 보고한다.
 
@@ -106,6 +107,7 @@ Budget tier:
 - Gate threshold `tau_g`: 위험 상위 30% hop 통과
 - Sequential test: `n_min=2`, `n_max=6`
 - LCIS 임계: `tau_low=0.02`, `tau_high=0.10`
+- LCIS 해석: 값이 클수록 해당 hop의 인과적 영향이 큼(우선 복구 후보)
 - 복구 연산 우선순위: 재검색 -> 링크 재연결 -> 부분 재생성 -> 전체 재시도(최후)
 - 종료 규칙:
 - 예산 소진
@@ -183,12 +185,14 @@ Budget tier:
 - Cost-per-Gain:
 - 분자: 추가 비용(`C_method - C_baseline`)
 - 분모: 성능 개선(`F1_method - F1_baseline` 또는 EM 개선)
+- 분모가 0 이하인 경우 `CPG-Invalid`로 태깅하고 CPG 우열 통계에서 제외
 
 ## 17. 통계 분석 계획(엄밀화)
 주가설 검정:
 - 기본 유의수준 `alpha = 0.05`
 - Primary endpoint는 paired bootstrap 10,000회 + paired permutation test를 함께 보고
 - 신뢰구간은 95% CI
+- EM 개선은 secondary endpoint로 분리 보고
 
 순차검정 오류율 통제:
 - LCIS 순차검정은 O'Brien-Fleming alpha-spending 규칙 적용

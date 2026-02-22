@@ -88,6 +88,11 @@ K=\{h_t \mid g(h_t)\ge \tau_g\}
 \begin{align}
 \widehat{LCIS}_t=\frac{1}{n_t}\sum_{i=1}^{n_t}\left(S(y)-S\left(y^{(i,t)}\right)\right)
 \end{align}
+\begin{itemize}
+  \item $S(y)$는 $[0,1]$로 정규화된 품질 점수로 정의한다:
+  \item $S(y)=\lambda_1\widetilde{\text{AnsScore}}(y)+\lambda_2\widetilde{\text{EvidenceCoverage}}(y)-\lambda_3\widetilde{\text{Omission}}(y)-\lambda_4\widetilde{\text{LinkInconsistency}}(y)$, $\sum_k\lambda_k=1$.
+  \item $\widehat{LCIS}_t$가 클수록 해당 hop 개입의 성능 영향이 큰 것으로 해석한다.
+\end{itemize}
 
 \subsection{단계 3: 순차검정과 조기종료}
 각 후보 hop에 대해 최소 샘플 $n_{\min}$부터 시작한다.
@@ -99,8 +104,11 @@ K=\{h_t \mid g(h_t)\ge \tau_g\}
 
 \subsection{단계 4: 예산 기반 복구 우선순위}
 \begin{align}
-R_t=\beta_1\cdot Risk_t+\beta_2\cdot (1-\widehat{LCIS}_t)-\beta_3\cdot \widehat{Cost}_t+\beta_4\cdot UncertaintyBonus_t
+R_t=\beta_1\cdot Risk_t+\beta_2\cdot \widehat{LCIS}_t-\beta_3\cdot \widehat{Cost}_t+\beta_4\cdot UncertaintyBonus_t
 \end{align}
+\begin{itemize}
+  \item 해석 일관성을 위해 $R_t$는 ``높은 위험 + 높은 인과영향 + 낮은 비용'' hop를 우선한다.
+\end{itemize}
 
 복구 실행 조건:
 \begin{align}
@@ -175,6 +183,14 @@ R_t>\eta,\quad C_{\text{used}}+\Delta C_t\le B
   \item 동일 budget tier에서만 비교
 \end{enumerate}
 
+\subsection{비용 동등 비교 페어링 규칙}
+\begin{enumerate}
+  \item pair 단위는 dataset/method pair/budget tier/seed로 고정한다.
+  \item 비용 동등 조건은 $\;0.95 \le C_{\text{method}}/C_{\text{ref}} \le 1.05\;$이다.
+  \item $\text{ref}$는 비교쌍의 기준 방법으로 고정한다 (예: BCR-Full vs Vanilla에서는 Vanilla, BCR-Full vs Full-Rerun에서는 Full-Rerun).
+  \item 비용 비동등 pair는 주가설 검정에서 제외하고 부록 민감도 분석으로 분리 보고한다.
+\end{enumerate}
+
 \subsection{평가 지표}
 \begin{enumerate}
   \item 정답: EM, F1
@@ -183,12 +199,17 @@ R_t>\eta,\quad C_{\text{used}}+\Delta C_t\le B
   \item 효율: 토큰, retrieval calls, latency, retry count
   \item 종합: Cost-per-Gain, Pareto Frontier
 \end{enumerate}
+\begin{itemize}
+  \item Cost-per-Gain$=\dfrac{C_{\text{method}}-C_{\text{baseline}}}{\Delta F1}$로 두되, $\Delta F1 \le 0$인 경우는 ``CPG-Invalid''로 태깅하고 win-rate 집계에서 제외한다.
+\end{itemize}
 
 \subsection{통계}
 \begin{enumerate}
+  \item Primary endpoint: B2(+20\%)의 cost-matched macro $\Delta F1$
   \item paired bootstrap 10{,}000회
   \item 95\% CI 보고
-  \item 주요 비교쌍 유의성 검증
+  \item 주요 비교쌍 유의성 검증 (paired permutation 병행)
+  \item EM 개선은 secondary endpoint로 별도 보고
 \end{enumerate}
 
 \section{아블레이션 설계}
@@ -212,11 +233,14 @@ R_t>\eta,\quad C_{\text{used}}+\Delta C_t\le B
 \section{기대 결과와 성공 기준}
 \subsection{사전등록 성공 기준}
 \begin{enumerate}
-  \item B2(+20\%)에서 평균 EM +3p 이상
+  \item B2(+20\%) cost-matched 조건에서 macro $\Delta F1>0$이며 95\% CI 하한 $>0$
   \item Error Localization F1 유의 개선
   \item Full-Rerun 대비 Cost-per-Gain 우위
   \item Pareto 상 BCR이 최소 2개 tier에서 비지배(non-dominated)
 \end{enumerate}
+\begin{itemize}
+  \item EM +3p는 exploratory 목표치로 유지하고, 주성공 판정은 Primary endpoint 기준으로 수행한다.
+\end{itemize}
 
 \subsection{참고 기대치(시뮬레이션 기반)}
 \begin{enumerate}
